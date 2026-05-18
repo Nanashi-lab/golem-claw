@@ -1,1 +1,1 @@
-import './counter-agent';
+import './telegram-echo-agent';

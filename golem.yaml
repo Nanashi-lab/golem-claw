@@ -36,3 +36,4 @@ httpApi:
     - domain: golem-claw.localhost:9006
       agents:
         CounterAgent: {}
+        TelegramEchoAgent: {}
