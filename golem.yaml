@@ -15,6 +15,7 @@ environments:
     server: local
     componentPresets: debug
   cloud:
+    default: true
     server: cloud
     componentPresets: release
 components:
@@ -30,10 +31,25 @@ components:
     #     COMPOSED_VAR_3: "{{ ENV_VAR_3 }}-{{ ENV_VAR_4}}"
     #
     env:
-httpApi:
-  deployments:
-    local:
-    - domain: golem-claw.localhost:9006
-      agents:
-        CounterAgent: {}
-        TelegramEchoAgent: {}
+
+secretDefaults:
+  local:
+    botToken: "REPLACE_WITH_TELEGRAM_BOT_TOKEN"
+    geminiApiKey: "REPLACE_WITH_GEMINI_API_KEY"
+    firecrawlApiKey: "REPLACE_WITH_FIRECRAWL_API_KEY"
+    weatherApiKey: "REPLACE_WITH_OPENWEATHER_API_KEY"
+    resendApiKey: "REPLACE_WITH_RESEND_API_KEY"
+    resendFromEmail: "Golem Claw <bot@example.com>"
+    webhookSecret: "REPLACE_WITH_WEBHOOK_SECRET"
+  cloud:
+    botToken: "REPLACE_WITH_TELEGRAM_BOT_TOKEN"
+    geminiApiKey: "REPLACE_WITH_GEMINI_API_KEY"
+    firecrawlApiKey: "REPLACE_WITH_FIRECRAWL_API_KEY"
+    weatherApiKey: "REPLACE_WITH_OPENWEATHER_API_KEY"
+    resendApiKey: "REPLACE_WITH_RESEND_API_KEY"
+    resendFromEmail: "Golem Claw <bot@example.com>"
+    webhookSecret: "REPLACE_WITH_WEBHOOK_SECRET"
+
+# Webhook HTTP API deployment is disabled while the app runs in Telegram polling mode.
+# To restore webhook mode, re-enable an httpApi deployment for TelegramWebhookAgent.
+# here we should deploy http api of telegram webhook agent, and make telegram call it.
