@@ -1,8 +1,10 @@
+// Sends Telegram messages safely and redacts noisy provider errors for chat.
 import type { Secret } from '@golemcloud/golem-ts-sdk';
 
 const TELEGRAM_MESSAGE_LIMIT = 4096;
 const TELEGRAM_CHUNK_SIZE = 3900;
 
+// Splits oversized text and sends each chunk in order.
 export async function sendTelegramMessages(
   botToken: Secret<string>,
   chatId: string,
@@ -15,6 +17,7 @@ export async function sendTelegramMessages(
   }
 }
 
+// Redacts secrets and long provider noise before surfacing an error to the user.
 export function formatErrorForTelegram(error: unknown): string {
   if (!(error instanceof Error)) {
     return 'Something went wrong: unknown error.';
@@ -29,6 +32,7 @@ export function formatErrorForTelegram(error: unknown): string {
   return `Something went wrong: ${message}`;
 }
 
+// Sends one raw Telegram `sendMessage` request.
 async function sendTelegramMessage(
   botToken: Secret<string>,
   chatId: string,
@@ -52,6 +56,7 @@ async function sendTelegramMessage(
   await response.json();
 }
 
+// Splits long messages conservatively to stay under Telegram limits.
 function splitTelegramMessage(text: string): string[] {
   if (text.length <= TELEGRAM_MESSAGE_LIMIT) {
     return [text];

@@ -8,18 +8,18 @@
 
 manifestVersion: 1.5.0
 
-app: golem-claw
+app: nanashi-lab
 
 environments:
   local:
+    default: true
     server: local
     componentPresets: debug
   cloud:
-    default: true
     server: cloud
     componentPresets: release
 components:
-  golem-claw:ts-main:
+  nanashi-lab:golem-claw:
     dir: ""
     templates: ts
 
@@ -50,6 +50,15 @@ secretDefaults:
     resendFromEmail: "Golem Claw <bot@example.com>"
     webhookSecret: "REPLACE_WITH_WEBHOOK_SECRET"
 
-# Webhook HTTP API deployment is disabled while the app runs in Telegram polling mode.
-# To restore webhook mode, re-enable an httpApi deployment for TelegramWebhookAgent.
-# here we should deploy http api of telegram webhook agent, and make telegram call it.
+httpApi:
+  deployments:
+    local:
+      - domain: golem-claw.localhost:9006
+        webhookUrl: http://golem-claw.localhost:9006
+        agents:
+          TelegramWebhookAgent: {}
+    cloud:
+      - domain: nanash-lab2.apps.golem.cloud
+        webhookUrl: https://nanash-lab2.apps.golem.cloud
+        agents:
+          TelegramWebhookAgent: {}

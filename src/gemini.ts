@@ -1,3 +1,4 @@
+// Wraps Gemini text generation and the project's tool-calling convention.
 import { Secret } from '@golemcloud/golem-ts-sdk';
 
 export type TelegramConfig = {
@@ -13,10 +14,12 @@ export type TelegramConfig = {
 const GEMINI_MODEL = 'gemini-3.1-flash-lite';
 const GEMINI_MODEL_SUPPORTS_NATIVE_FUNCTIONS = false;
 
+// Distinguishes provider quota failures from ordinary Gemini request failures.
 export function isGeminiQuotaError(error: unknown): boolean {
   return error instanceof Error && error.name === 'GeminiQuotaError';
 }
 
+// Creates a recognizable quota error that callers can special-case.
 function createGeminiQuotaError(message: string): Error {
   const error = new Error(message);
   error.name = 'GeminiQuotaError';
@@ -60,11 +63,13 @@ type GeminiResponse = {
   }>;
 };
 
+// Sends a plain-text prompt and returns Gemini's text response.
 export async function callGemini(apiKey: Secret<string>, prompt: string): Promise<string> {
   const data = await generateContent(apiKey, [{ role: 'user', parts: [{ text: prompt }] }]);
   return extractText(data);
 }
 
+// Returns either a direct reply or one structured tool call.
 export async function callGeminiWithFunctions(
   apiKey: Secret<string>,
   prompt: string,
@@ -92,6 +97,7 @@ export async function callGeminiWithFunctions(
   return extractText(data);
 }
 
+// Feeds a prior tool call and tool result back into Gemini for the final reply.
 export async function callGeminiAfterFunction(
   apiKey: Secret<string>,
   prompt: string,
@@ -136,6 +142,7 @@ export async function callGeminiAfterFunction(
   return extractText(data);
 }
 
+// Emulates tool calling by asking Gemini to emit a tiny JSON envelope.
 async function callGeminiWithGeneratedToolJson(
   apiKey: Secret<string>,
   prompt: string,
@@ -181,6 +188,7 @@ async function callGeminiWithGeneratedToolJson(
   return raw;
 }
 
+// Pulls the first JSON object out of a raw Gemini reply when tool calling is emulated.
 function parseJsonObject(rawText: string): Record<string, unknown> | undefined {
   const trimmed = rawText.trim();
   const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
@@ -200,6 +208,7 @@ function parseJsonObject(rawText: string): Record<string, unknown> | undefined {
   }
 }
 
+// Calls the Gemini API directly with optional function declarations.
 async function generateContent(
   apiKey: Secret<string>,
   contents: GeminiContent[],
@@ -236,6 +245,7 @@ async function generateContent(
   return (await response.json()) as GeminiResponse;
 }
 
+// Extracts concatenated text parts from the first Gemini candidate.
 function extractText(data: GeminiResponse): string {
   const parts = data.candidates?.[0]?.content?.parts ?? [];
   const text = parts

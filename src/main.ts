@@ -1,11 +1,14 @@
 import './gemini';
-import './todo-agent';
-import './note-agent';
-import './weather-agent';
-import './firecrawl-agent';
-import './email-agent';
-import './research-agent';
-import './chat-agent';
-import './telegram-polling-agent';
-// Declared for compatibility, but not exposed in golem.yaml while polling is active.
-import './telegram-transport';
+import './stores/conversation-store';
+import './stores/task-store';
+import './stores/note-store';
+import './stores/profile-store';
+import './stores/goal-store';
+import './stores/portfolio-store';
+import './agents/chat-concierge-agent';
+import './agents/goal-coach-agent';
+import './agents/portfolio-analyst-agent';
+import './agents/research-agent';
+import './agents/digest-agent';
+import './agents/orchestrator';
+import './agents/telegram-webhook-agent';

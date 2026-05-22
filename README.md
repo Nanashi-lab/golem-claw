@@ -1,432 +1,277 @@
 # Golem Claw
 
-Golem Claw is a Telegram-first personal assistant built as a Golem TypeScript application. It is designed as a hackathon showcase for durable agents: every Telegram chat gets its own persistent assistant state, and background work such as reminders, research jobs, polling, and daily digests can continue without a traditional server process.
-
-The current deployment mode uses Telegram polling, it is also possible to use webhooks with a help of HTTP API endpoint.(code exists as showcase, but doesnt do anything, something to explore in future).
-
-## Screenshots
-
-![Golem Claw Telegram assistant demo](screenshots/1.png)
-
-![Golem Claw research and follow-up demo](screenshots/2.jpeg)
-
-## What It Demonstrates
-
-- Durable per-chat assistant state keyed by Telegram `chat.id`.
-- Natural-language tool use for todos, reminders, notes, weather, web search, page scraping, email, profile memory, goals, and research.
-- Background research jobs that search the web, scrape sources, write a saved research note, and notify the user when complete.
-- Optional research follow-ups: email the finished note and/or add a review todo.
-- Scheduled reminders and daily digests using Golem scheduled invocations.
-- Long-term memory and goal tracking that survive across messages and invocations.
-- Telegram polling with durable offset tracking, so processed updates are not repeated.
-- A restored webhook agent is still declared in code, but it is not deployed through `golem.yaml` right now.
-
-## Capabilities
-
-### Conversational Assistant
-
-The main interface is plain Telegram chat. Slash commands exist for quick browsing and status, but most mutations are intended to happen through natural language.
-
-Examples:
-
-```text
-Remember that I prefer concise morning summaries.
-My email is me@example.com and my city is Bangalore.
-Add a todo to renew my passport.
-Remind me tomorrow at 9 AM to call the bank.
-Save a note that the demo should focus on durable agents.
-Find recent news about Golem Cloud.
-Scrape https://example.com and summarize it.
-Research Firecrawl's current API and save a note.
-Research durable execution examples and email me when done.
-Send an email to me@example.com with subject Demo plan and body Here is the plan...
-I want to improve my sleep. Track it as a goal.
-I slept 7 hours yesterday and felt better today.
-```
-
-The assistant keeps a short recent chat history, a compact long-term summary, explicit long-term memory, tracked goals, and daily chat logs.
-
-### Todos And Reminders
-
-Todos are stored in a durable `TodoAgent(botName, chatId)` for each Telegram chat.
-
-Supported behavior:
-
-- Add todos through natural language.
-- Delete todos through natural language.
-- List todos with `/todos` or natural language.
-- Set reminders from natural language time requests.
-- List active reminders with `/reminders`.
-- Fire reminders later without needing the user to message again.
-
-Reminder example:
-
-```text
-Remind me next Friday at 3 PM to submit the report.
-```
-
-When a reminder is created, it is also added to the todo list if it is not already present. The scheduled `fireReminder` invocation later sends a Telegram message like:
-
-```text
-Reminder: submit the report
-```
-
-### Notes And Research Notes
-
-Notes are durable and readable by stable names such as `note-demo-focus` or `research-firecrawl-api`.
-
-Supported behavior:
-
-- Save notes through natural language.
-- List notes with `/notes`.
-- Read a note with `/note <name>`.
-- Edit note text, title, or readable name through natural language.
-- Delete notes through natural language.
-- Store research output as first-class research notes.
-
-Examples:
-
-```text
-Save a note: For the demo, show polling, memory, reminders, and research.
-Rename the demo note to note-demo-script.
-Update note-demo-script with the final demo flow.
-Delete the old demo note.
-```
-
-### Weather
-
-Weather uses OpenWeather and a durable saved default city.
-
-Supported behavior:
-
-- Save a default city through natural language or `addUserInfo`.
-- Ask for current weather in any named city.
-- Ask `/weather` to use the saved default city.
-
-Examples:
-
-```text
-My city is Bangalore.
-What's the weather?
-What's the weather in Tokyo?
-```
-
-### Web Search And Page Scraping
-
-Firecrawl powers live web access.
-
-Supported behavior:
-
-- `webSearch` finds up to five web results for current or unknown information.
-- `webScrape` reads a specific HTTP or HTTPS page and returns markdown to the assistant.
-- Firecrawl calls are routed through `FirecrawlAgent(botName)`, which serializes access per bot.
-
-Examples:
-
-```text
-Search the web for the latest Golem Cloud docs.
-Scrape https://learn.golem.cloud and summarize what changed.
-```
-
-### Background Research Without Email
-
-Research jobs are handled by `ResearchAgent(botName, chatId)` and run asynchronously. The chat agent starts the job, triggers `runResearch`, and immediately replies that work has started.
-
-For a research-only flow:
-
-```text
-Research the current Firecrawl v2 scrape endpoint and save the findings.
-```
-
-The research agent then:
-
-- Searches the web with Firecrawl.
-- Scrapes up to three result pages.
-- Asks Gemini to write a concise markdown research note with summary, key points, caveats, and source URLs.
-- Saves the note in `NoteAgent` as a research note.
-- Sends a Telegram completion message with the saved note name.
-
-The final message looks like:
-
-```text
-Research complete: Firecrawl v2 scrape endpoint
-Saved as note research-firecrawl-v2-scrape-endpoint: Research: Firecrawl v2 scrape endpoint
-Read it with /note research-firecrawl-v2-scrape-endpoint
-```
-
-### Background Research With Email
-
-Research can also email the completed note. If the user has saved a default email, the assistant can use it automatically. The user can also provide an explicit recipient.
-
-Examples:
-
-```text
-Research Golem durable agents and email me the result when done.
-Research Telegram bot polling tradeoffs and email it to team@example.com.
-Research Golem Cloud deployment steps, email me the note, and add a todo to review it tomorrow.
-```
-
-When email is requested, the research agent sends the same saved research note through Resend after the note is generated. If a completion todo is requested, it also adds that todo after the research completes.
-
-### Email
-
-Email is separate from research. `EmailAgent(botName, chatId)` stores email addresses and sends plain text email through Resend.
-
-Supported behavior:
-
-- Save or update a default email with `/email <address>` or natural language.
-- List saved email addresses with `/emails`.
-- Send a direct email by natural language.
-- Use the saved default recipient when no recipient is provided.
-- Use Resend idempotency keys for mutation-style sends.
-
-Examples:
-
-```text
-My email is me@example.com.
-Send me an email with subject Reminder and body Bring up the daily digest during the demo.
-Send an email to teammate@example.com with subject Demo and body The bot is ready.
-```
-
-### Memory And Profile
-
-The assistant has long-term memory separate from raw chat history. It only stores useful durable facts, preferences, constraints, profile details, and goal context.
-
-Supported profile fields:
-
-- Email address.
-- Default city.
-- Display name.
-- Timezone or locale preference.
-- Durable preferences or important profile facts.
-
-Examples:
-
-```text
-My name is Chinu and I prefer short direct answers.
-Remember that I usually work in IST.
-My default city is Bangalore and my email is me@example.com.
-```
-
-The `addUserInfo` path can update multiple pieces of profile information in one turn. Email and city are routed to their dedicated durable agents, while durable facts are merged into long-term memory.
+Telegram-first Golem showcase assistant with durable per-chat state, background research, daily digests, lightweight automation, and a cleaner multi-layer architecture.
+
+## What It Does
+
+Golem Claw is a Telegram concierge that keeps durable state per `chat.id` and combines:
+
+- a single user-facing chat agent
+- durable stores for tasks, notes, goals, profile, portfolio, and conversation history
+- specialist background agents for research, digests, goal coaching, and portfolio nudges
+- service modules for weather, email, web research, and stock quotes
+- a non-LLM orchestrator for recurring automation
+
+## Features
+
+- Telegram webhook ingress over Golem HTTP API
+- Durable per-chat identity keyed by Telegram `chat.id`
+- Full transcript storage separated from compact LLM working context
+- Gemini-powered natural-language tool routing using generated JSON tool calls
+- Tasks with reminders and monthly recurring task templates
+- Durable notes and research notes with tags and sources
+- Durable profile memory including timezone, city, email, facts, and automation preference
+- Durable goals with progress logs and stale-goal follow-up metadata
+- Durable portfolio holdings, watchlist, cached quotes, and linked research notes
+- Background research jobs with Firecrawl search/scrape and saved note output
+- Morning and evening digest generation
+- Rule-based automation for digests, inactivity nudges, stale-goal follow-ups, portfolio nudges, and monthly task materialization
+- Weather lookups via OpenWeather
+- Email delivery via Resend
+- Stock end-of-day quotes via Stooq
+
+## Current Architecture
+
+### Front Door
+
+- `TelegramWebhookAgent(name)` receives webhook calls at `/telegram/{name}/webhook`
+- `ChatConciergeAgent(botName, chatId)` is the only user-facing conversational agent
+
+### Durable Stores
+
+- `ConversationStore(botName, chatId)` stores:
+  - full transcript
+  - compact working history
+  - rolling conversation summary
+  - last user activity timestamp
+- `ProfileStore(botName, chatId)` stores:
+  - name
+  - username
+  - timezone
+  - city
+  - emails
+  - durable facts
+  - long-term memory
+  - automation enabled flag
+- `TaskStore(botName, chatId)` stores:
+  - open tasks
+  - reminders
+  - monthly recurring templates
+- `GoalStore(botName, chatId)` stores:
+  - goals
+  - progress entries
+  - `lastProgressAt`
+  - `lastNudgedAt`
+- `NoteStore(botName, chatId)` stores:
+  - plain notes
+  - research notes
+  - tags
+  - source URLs
+- `PortfolioStore(botName, chatId)` stores:
+  - holdings
+  - watchlist
+  - cached quotes
+  - research linkage
+
+### Specialist Agents
+
+- `ResearchAgent(botName, chatId)` runs background research and saves final notes
+- `DigestAgent(botName, chatId)` writes morning and evening digests
+- `GoalCoachAgent(botName, chatId)` generates tracking plans and stale-goal prompts
+- `PortfolioAnalystAgent(botName, chatId)` generates lightweight portfolio nudges
+- `Orchestrator(botName, chatId)` coordinates automation without using an LLM
+
+### Service Modules
+
+- `src/services/firecrawl-api.ts` for live web search and scraping
+- `src/services/weather-api.ts` for city resolution and weather
+- `src/services/email-api.ts` for email sends
+- `src/services/market-data.ts` for stock quotes
+
+## Supported Behavior
+
+### Tasks
+
+- add, list, complete, and delete tasks
+- create reminders
+- monthly recurring tasks
+- monthly tasks create one instance per month and are due at month end in the saved timezone
+
+### Notes And Research
+
+- save, list, read, edit, delete, and search notes
+- ability to add your own notes, or have chat conceirge add notes
+- background research jobs create tagged research notes
+- stock research links the saved note back into the portfolio store
+
+### Profile And Memory
+
+- save name, timezone, city, and email
+- remember durable user facts and preferences
+- preserve day-boundary logic using the saved timezone
 
 ### Goals
 
-Goals are stored in the chat agent with an inferred tracking plan and recent progress entries.
+- add goals
+- log progress
+- generate tracking plans
+- generate stale-goal follow-up prompts
 
-Supported behavior:
+### Portfolio
 
-- Add a goal with `/goal <goal>` or natural language.
-- List goals with `/goals`.
-- Log progress through natural language.
-- Include goals and recent progress in the daily digest.
-- Use goals as context for future replies.
+- add and update holdings
+- preserve existing holding metadata on partial updates
+- maintain a watchlist
+- fetch cached end-of-day quotes
+- generate stock research jobs with portfolio context
+
+### Automation
+
+When automation is enabled and a timezone is saved, `Orchestrator` schedules:
+
+- morning digest at `09:00` local time
+- automation sweep at `13:00` local time
+- evening digest at `21:00` local time
+
+The automation sweep handles:
+
+- monthly task materialization
+- inactivity nudges
+- stale-goal follow-ups
+- lightweight portfolio nudges
+
+## Telegram Webhook
+
+Telegram calls the webhook agent, which routes each update by incoming `message.chat.id`:
+
+```ts
+ChatConciergeAgent.get(botName, String(message.chat.id))
+```
+
+HTTP API domains:
+
+- Local base URL: `http://golem-claw.localhost:9006`
+- Local webhook URL for bot `claw`: `http://golem-claw.localhost:9006/telegram/claw/webhook`
+- Local OpenAPI: `http://golem-claw.localhost:9006/openapi.yaml`
+
+Current Cloud-based setup:
+
+- Cloud base URL: `https://nanash-lab2.apps.golem.cloud`
+- Cloud webhook URL for bot `claw`: `https://nanash-lab2.apps.golem.cloud/telegram/claw/webhook`
+- Cloud OpenAPI: `https://nanash-lab2.apps.golem.cloud/openapi.yaml`
+
+Set the Telegram webhook with the configured secret token:
+
+```sh
+curl "https://api.telegram.org/bot$BOT_TOKEN/setWebhook?url=https://nanash-lab2.apps.golem.cloud/telegram/claw/webhook&secret_token=$WEBHOOK_SECRET"
+```
+
+## Project Structure
+
+```text
+src/
+  agents/
+    chat-concierge-agent.ts
+    digest-agent.ts
+    goal-coach-agent.ts
+    orchestrator.ts
+    portfolio-analyst-agent.ts
+    research-agent.ts
+    telegram-webhook-agent.ts
+    chat-tools.ts
+  stores/
+    conversation-store.ts
+    goal-store.ts
+    note-store.ts
+    portfolio-store.ts
+    profile-store.ts
+    task-store.ts
+  services/
+    email-api.ts
+    firecrawl-api.ts
+    market-data.ts
+    weather-api.ts
+  gemini.ts
+  reporting.ts
+  telegram-api.ts
+  time-utils.ts
+  main.ts
+```
+
+## Deploying
+
+### Local
+
+Local is the default environment in `golem.yaml`.
+
+Clean local redeploy:
+
+```sh
+golem -L deploy --yes --reset
+```
+
+Update existing local agents in place:
+
+```sh
+golem -L deploy --yes --update-agents automatic
+```
+
+Inspect the local OpenAPI spec:
+
+```sh
+curl http://golem-claw.localhost:9006/openapi.yaml
+```
+
+### Cloud
+
+Deploy to cloud:
+
+```sh
+golem -C deploy --yes
+```
+
+Clean cloud redeploy:
+
+```sh
+golem -C deploy --yes --reset
+```
+
+## Direct Agent Testing
 
 Examples:
 
-```text
-I want to get healthier. Track that as a goal.
-I walked 7,000 steps today and slept 6.5 hours.
-What goals are you tracking?
-```
-
-For broad goals, the assistant asks Gemini to infer a compact tracking plan, such as checking habits, blockers, measurements, or recurring signals.
-
-### Daily Digest
-
-Each chat agent keeps per-day logs for recent days and schedules a daily digest around 21:00 server time.
-
-The digest uses:
-
-- Long-term memory.
-- Tracked goals and progress.
-- Conversation summary.
-- Open todos.
-- Saved notes.
-- Research job status.
-- Full chat log for the day.
-- Previous available day log.
-
-The digest is sent to Telegram. If a default email exists, it is also sent by email.
-
-You can request it immediately with:
-
-```text
-/daily
-```
-
-## Slash Commands
-
-Slash commands are shortcuts for browsing, status, or simple setup. They are intentionally not added to the long-term LLM chat history.
-
-| Command | Purpose |
-| --- | --- |
-| `/start` | Show help. |
-| `/help` | Show help. |
-| `/notes` | List saved notes and research notes. |
-| `/note <name>` | Read a saved note by readable name. |
-| `/todos` | List todos. |
-| `/reminders` | List active reminders. |
-| `/weather` | Show current weather for the saved default city. |
-| `/emails` | List saved email addresses. |
-| `/email <address>` | Save or update the default email address. |
-| `/goals` | List tracked goals. |
-| `/goal <goal>` | Add a tracked goal and infer a tracking plan. |
-| `/daily` | Generate today's digest immediately. |
-| `/research <topic>` | Start a background research note without email. |
-| `/research_jobs` | List recent research jobs and note names. |
-
-## Agent Architecture
-
-| Agent | Role |
-| --- | --- |
-| `TelegramPollingAgent(botName)` | Polls Telegram `getUpdates`, stores offset, and routes messages by `chat.id`. |
-| `TelegramChatAgent(botName, chatId)` | Owns chat orchestration, LLM tool routing, history, memory, goals, daily logs, and digest scheduling. |
-| `TodoAgent(botName, chatId)` | Stores todos and scheduled reminders. |
-| `NoteAgent(botName, chatId)` | Stores notes and research notes. |
-| `WeatherAgent(botName, chatId)` | Stores default city and fetches current weather. |
-| `EmailAgent(botName, chatId)` | Stores recipients and sends email through Resend. |
-| `FirecrawlAgent(botName)` | Performs Firecrawl search and scrape calls. |
-| `ResearchAgent(botName, chatId)` | Runs asynchronous research jobs and follow-ups. |
-| `TelegramWebhookAgent(name)` | Webhook-compatible transport kept in code, but not deployed in the current polling manifest. |
-
-## Telegram Polling
-
-The app currently uses polling instead of webhooks. The poller stores Telegram's update offset durably and routes every update by incoming `message.chat.id`:
-
-```ts
-TelegramChatAgent.get(botName, String(message.chat.id))
-```
-
-Polling status includes:
-
-- Whether polling is enabled.
-- Current Telegram offset.
-- Processed update count.
-- Consecutive failure count.
-- Last poll timestamp.
-- Last error.
-- Next scheduled poll timestamp.
-
-Before starting polling, disable any Telegram webhook. Pending updates can be dropped for a fresh demo setup:
-
 ```sh
-curl "https://api.telegram.org/bot$BOT_TOKEN/deleteWebhook?drop_pending_updates=true"
+golem -L agent invoke 'TaskStore("claw", "8156168316")' listTasks --no-stream
+golem -L agent invoke 'ProfileStore("claw", "8156168316")' getProfileSnapshot --no-stream
+golem -L agent invoke 'ConversationStore("claw", "8156168316")' getConversationState --no-stream
+golem -L agent invoke 'Orchestrator("claw", "8156168316")' syncSchedules '"manual-test"' --no-stream
 ```
 
-## Configuration
+## Supported "/" commands
 
-`golem.yaml` contains placeholder secret defaults for local and cloud environments:
+We support a wide variety of slash commands, that can be used to directly access the stores, without the need of chat agent.
 
-```yaml
-secretDefaults:
-  local:
-    botToken: "REPLACE_WITH_TELEGRAM_BOT_TOKEN"
-    geminiApiKey: "REPLACE_WITH_GEMINI_API_KEY"
-    firecrawlApiKey: "REPLACE_WITH_FIRECRAWL_API_KEY"
-    weatherApiKey: "REPLACE_WITH_OPENWEATHER_API_KEY"
-    resendApiKey: "REPLACE_WITH_RESEND_API_KEY"
-    resendFromEmail: "Golem Claw <bot@example.com>"
-    webhookSecret: "REPLACE_WITH_WEBHOOK_SECRET"
-```
+- `/help`
+- `/goals`
+- `/portfolio`
+- `/weather`
+- `/tasks`
+- `/notes`
+- `/note <name>`
+- `/morning`
+- `/daily`
+- `/watch`
+- `/watchlist`
+- `/stock`
+- `/stock_research`
+- `/research`
+- `/research_jobs`
+- `/reminders`
 
-Required external services:
 
-- Telegram Bot API for chat transport.
-- Gemini for replies, tool routing, summaries, research-note writing, memory updates, and goal-plan inference.
-- Firecrawl for web search and page scraping.
-- OpenWeather for city resolution and current weather.
-- Resend for email delivery.
+## Notes
 
-Gemini native function responses are disabled in this code path. Tool calls use generated JSON because the selected model requires `thought_signature` for native tool response turns.
-
-## Deploy To Golem Cloud
-
-The manifest sets `cloud` as the default environment.
-
-Authenticate and deploy:
-
-```sh
-/home/chinu/code/golem-x86_64-unknown-linux-gnu -C account get
-/home/chinu/code/golem-x86_64-unknown-linux-gnu deploy --yes
-```
-
-For a clean hackathon demo redeploy:
-
-```sh
-/home/chinu/code/golem-x86_64-unknown-linux-gnu deploy --yes --reset
-```
-
-To explicitly select cloud:
-
-```sh
-/home/chinu/code/golem-x86_64-unknown-linux-gnu -C deploy --yes
-```
-
-## Start The Poller
-
-After deploying, start one poller instance for the bot name `claw`:
-
-```sh
-/home/chinu/code/golem-x86_64-unknown-linux-gnu -C agent invoke --trigger 'TelegramPollingAgent("claw")' start
-```
-
-Check status:
-
-```sh
-/home/chinu/code/golem-x86_64-unknown-linux-gnu -C agent invoke 'TelegramPollingAgent("claw")' status
-```
-
-Stop polling:
-
-```sh
-/home/chinu/code/golem-x86_64-unknown-linux-gnu -C agent invoke 'TelegramPollingAgent("claw")' stop
-```
-
-## Local Testing
-
-Deploy locally with:
-
-```sh
-/home/chinu/code/golem-x86_64-unknown-linux-gnu -L deploy --yes --reset
-```
-
-Start the local poller with:
-
-```sh
-/home/chinu/code/golem-x86_64-unknown-linux-gnu -L agent invoke --trigger 'TelegramPollingAgent("claw")' start
-```
-
-Check local status:
-
-```sh
-/home/chinu/code/golem-x86_64-unknown-linux-gnu -L agent invoke 'TelegramPollingAgent("claw")' status
-```
-
-Trigger one immediate poll while testing:
-
-```sh
-/home/chinu/code/golem-x86_64-unknown-linux-gnu -L agent invoke 'TelegramPollingAgent("claw")' poll
-```
-
-## Suggested Demo Flow
-
-1. Start with `/help` to show the command surface.
-2. Save profile context: `My name is Chinu, my city is Bangalore, and my email is me@example.com.`
-3. Add a todo: `Add a todo to polish the Golem demo.`
-4. Set a reminder: `Remind me tomorrow at 9 AM to rehearse the demo.`
-5. Add a goal: `I want to ship this hackathon project. Track that as a goal.`
-6. Save a note: `Save a note that polling avoids the cloud domain problem.`
-7. Run research-only: `/research Golem durable execution examples`.
-8. Run research with email: `Research Telegram polling tradeoffs and email me when done.`
-9. Send standalone email: `Send me an email with subject Demo status and body The assistant can now research, remember, and follow up.`
-10. Generate digest: `/daily`.
-
-## Current Limitations
-
-- Telegram transport currently handles text messages only.
-- Polling runs every 60 seconds for demo simplicity.
-- Webhook code exists, but no HTTP API deployment is enabled in `golem.yaml`.
-- The daily digest schedule uses server-local date logic around 21:00.
-- Research scrapes up to three pages and truncates page content for LLM context.
-- Email delivery depends on a valid Resend API key and a sender allowed by the Resend account.
+- `chat.id` is the durable identity key throughout the system
+- Most automation messages route through `ChatConciergeAgent`, while reminders send directly for reliability and are still recorded in `ConversationStore`
+- The saved timezone should be treated as the source of truth for user-facing day boundaries, regardless of server timezone
+- Before a public demo, move secrets out of `golem.yaml` and replace the Resend sender with a verified domain sender
