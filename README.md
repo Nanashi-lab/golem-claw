@@ -2,6 +2,12 @@
 
 Telegram-first Golem showcase assistant with durable per-chat state, background research, daily digests, lightweight automation, and a cleaner multi-layer architecture.
 
+## Showcase
+
+![Golem Claw showcase 1](screenshots/1.png)
+
+![Golem Claw showcase 2](screenshots/2.jpeg)
+
 ## What It Does
 
 Golem Claw is a Telegram concierge that keeps durable state per `chat.id` and combines:
